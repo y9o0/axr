@@ -1,12 +1,5 @@
 fn main() {
-    let x = 1;
-    let testu : str = test("some");
-
+    println("test");
+    let x = 123;
     println(x);
-    return;
-}
-
-fn test(test : str) -> str {
-    println(test);
-    return test;
 }

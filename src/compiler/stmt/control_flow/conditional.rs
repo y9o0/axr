@@ -1,14 +1,15 @@
+use crate::compiler::{ast::Stmt, rules::Precedence::Assignment};
+
 use super::super::*;
 
 impl Parser {
-    pub fn match_stmt(&mut self, scanner: &mut Scanner) {
-        let mut jumps: Vec<usize> = Vec::new();
+    pub fn match_stmt(&mut self, scanner: &mut Scanner) -> Stmt {
         let mut type_tags: Vec<TypeTag> = Vec::new();
 
-        self.expression(scanner);
+        let matched_on_expr = self.parse_precedence(Assignment, scanner);
         let ftype_tag = self.type_tag.pop().expect(TYPETAG_ERR);
 
-        self.begin_scope();
+        //self.begin_scope();
 
         self.consume(
             TokenType::LeftBrace,
@@ -16,67 +17,33 @@ impl Parser {
             scanner,
         );
 
-        self.emit_byte(OpCode::Dup as u8);
-        self.expression(scanner);
+        let case_expr = self.parse_precedence(Assignment, scanner);
         type_tags.push(self.type_tag.pop().expect(TYPETAG_ERR));
-        self.emit_byte(OpCode::EqualTo as u8);
-
-        let next_jump = self.emit_jump(OpCode::JumpIfFalse as usize);
 
         self.consume(TokenType::FatArrowLeft, "Expect '=>' after case.", scanner);
 
-        self.begin_scope();
+        //self.begin_scope();
+
         self.consume(
             TokenType::LeftBrace,
             "Expect '{' at the start of the case",
             scanner,
         );
 
-        self.emit_byte(OpCode::Pop as u8);
-        self.emit_byte(OpCode::Pop as u8);
-        self.block(scanner);
-        jumps.push(self.emit_jump(OpCode::Jump as usize));
+        let case_stmt = self.block(scanner);
 
-        self.patch_jump(next_jump as usize);
-        self.emit_byte(OpCode::Pop as u8);
+        //self.end_scope();
 
-        self.end_scope();
         self.consume(
             TokenType::Comma,
             "Expect ',' at the end of the case's block.",
             scanner,
         );
 
+        let mut branches = Vec::new();
         while self.current.token_type != TokenType::WildCard {
-            self.emit_byte(OpCode::Dup as u8);
-            self.expression(scanner);
-            type_tags.push(self.type_tag.pop().expect(TYPETAG_ERR));
-            self.emit_byte(OpCode::EqualTo as u8);
-
-            let next_jump = self.emit_jump(OpCode::JumpIfFalse as usize);
-
-            self.consume(TokenType::FatArrowLeft, "Expect '=>' after case.", scanner);
-
-            self.begin_scope();
-            self.consume(
-                TokenType::LeftBrace,
-                "Expect '{' at the start of the case",
-                scanner,
-            );
-
-            self.emit_byte(OpCode::Pop as u8);
-            self.emit_byte(OpCode::Pop as u8);
-            self.block(scanner);
-            jumps.push(self.emit_jump(OpCode::Jump as usize));
-            self.patch_jump(next_jump as usize);
-            self.emit_byte(OpCode::Pop as u8);
-
-            self.end_scope();
-            self.consume(
-                TokenType::Comma,
-                "Expect ',' at the end of the case's block.",
-                scanner,
-            );
+            let stmt = self.branch(scanner, &mut type_tags);
+            branches.push(stmt);
         }
 
         self.consume(
@@ -86,25 +53,23 @@ impl Parser {
         );
 
         self.consume(TokenType::FatArrowLeft, "Expect '=>' after a case", scanner);
-        self.begin_scope();
+        //self.begin_scope();
         self.consume(
             TokenType::LeftBrace,
             "Expect '{' after a fat arrow",
             scanner,
         );
 
-        self.emit_byte(OpCode::Pop as u8);
-        self.block(scanner);
-        jumps.push(self.emit_jump(OpCode::Jump as usize));
+        let wild_card_stmt = self.block(scanner);
 
-        self.end_scope();
+        //self.end_scope();
 
         self.consume(
             TokenType::RightBrace,
             "Excpet '}' at the end of the match body.",
             scanner,
         );
-        self.end_scope();
+        //self.end_scope();
 
         for i in type_tags {
             if ftype_tag != i {
@@ -115,30 +80,67 @@ impl Parser {
             }
         }
 
-        for i in jumps {
-            self.patch_jump(i);
-        }
-    }
+        // Stmt::Match {
+        //     matched: matched_on_expr,
+        //     case: case_expr,
+        //     case_body: Box::new(case_stmt),
+        //     branches: Box::new(branches),
+        //     wild_card: Box::new(wild_card_stmt),
+        // }
 
-    pub fn if_stmt(&mut self, scanner: &mut Scanner) {
-        self.expression(scanner);
+        Stmt::NoneStmt
+    } // done
 
-        let then_jump = self.emit_jump(OpCode::JumpIfFalse as usize);
-        self.emit_byte(OpCode::Pop as u8);
-        self.statement(scanner);
+    fn branch(&mut self, scanner: &mut Scanner, type_tags: &mut Vec<TypeTag>) -> Stmt {
+        let expr = self.parse_precedence(Assignment, scanner);
 
-        let else_jump = self.emit_jump(OpCode::Jump as usize);
+        type_tags.push(self.type_tag.pop().expect(TYPETAG_ERR));
 
-        self.patch_jump(then_jump as usize);
+        self.consume(TokenType::FatArrowLeft, "Expect '=>' after case.", scanner);
 
-        self.emit_byte(OpCode::Pop as u8);
+        //self.begin_scope();
+
+        self.consume(
+            TokenType::LeftBrace,
+            "Expect '{' at the start of the case",
+            scanner,
+        );
+
+        let stmt = self.block(scanner);
+
+        //self.end_scope();
+        self.consume(
+            TokenType::Comma,
+            "Expect ',' at the end of the case's block.",
+            scanner,
+        );
+
+        Stmt::NoneStmt
+    } // done
+
+    pub fn if_stmt(&mut self, scanner: &mut Scanner) -> Stmt {
+        let expr = self.parse_precedence(Assignment, scanner);
+
+        let stmt = self.statement(scanner);
+
+        let mut else_if_stmt: Option<Stmt> = None;
+        let mut else_stmt: Option<Stmt> = None;
+
         if self.match_consume(&TokenType::Else, scanner) {
             if self.match_consume(&TokenType::If, scanner) {
-                self.if_stmt(scanner);
+                let stmt = self.if_stmt(scanner);
+                else_if_stmt = Some(stmt);
             } else {
-                self.statement(scanner);
+                let stmt = self.statement(scanner);
+                else_stmt = Some(stmt)
             }
         }
-        self.patch_jump(else_jump as usize);
-    }
+
+        Stmt::If {
+            expr,
+            body: Box::new(stmt),
+            else_stmt: Box::new(else_stmt),
+            else_if_stmt: Box::new(else_if_stmt),
+        }
+    } // done
 }

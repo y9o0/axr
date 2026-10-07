@@ -41,11 +41,7 @@ static RULES: [ParseRule; 68] = [
     NONE_RULE, // {
     NONE_RULE, // }
     NONE_RULE, // ,
-    ParseRule {
-        prefix: None,
-        infix: Some(Parser::methode),
-        precedence: Precedence::Call,
-    }, // .
+    NONE_RULE, // .
     ParseRule {
         prefix: Some(Parser::unary),
         infix: Some(Parser::binary),
@@ -119,12 +115,12 @@ static RULES: [ParseRule; 68] = [
     NONE_RULE, // =>
     ParseRule {
         prefix: None,
-        infix: Some(Parser::add_add_expr),
+        infix: Some(Parser::compoundassign_expr),
         precedence: Precedence::Assignment,
     }, // +=
     ParseRule {
         prefix: None,
-        infix: Some(Parser::minus_minus_expr),
+        infix: Some(Parser::compoundassign_expr),
         precedence: Precedence::Assignment,
     }, // -=
     ParseRule {
@@ -205,11 +201,7 @@ static RULES: [ParseRule; 68] = [
     NONE_RULE, // Unt
     NONE_RULE, // Array
     NONE_RULE, // Opt
-    ParseRule {
-        prefix: Some(Parser::some_expr),
-        infix: None,
-        precedence: Precedence::None,
-    }, // Some
+    NONE_RULE, // Some
     ParseRule {
         prefix: Some(Parser::literal),
         infix: None,

@@ -59,7 +59,7 @@ impl Parser {
             scanner,
         );
 
-        self.emit_byte(OpCode::IndexArray as u8);
+        //self.emit_byte(OpCode::IndexArray as u8);
         NoneExpr
     }
 
@@ -95,8 +95,8 @@ impl Parser {
 
         self.consume(TokenType::RightBracket, "Expect ']' ", scanner);
 
-        self.emit_byte(OpCode::Array as u8);
-        self.emit_byte(array_len as u8);
+        //self.emit_byte(OpCode::Array as u8);
+        //self.emit_byte(array_len as u8);
 
         while self.match_consume(&TokenType::Comma, scanner) {
             if !self.check(&TokenType::LeftBracket) {

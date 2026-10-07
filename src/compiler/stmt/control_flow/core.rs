@@ -11,5 +11,5 @@ impl Parser {
 
         self.consume(TokenType::RightBrace, "Expect '}' after block.", scanner);
         stmts
-    } // done
+    }
 }

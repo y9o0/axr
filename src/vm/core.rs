@@ -1,3 +1,5 @@
+use crate::compiler::codegen::CodeGen;
+
 use super::*;
 
 impl Vm {
@@ -17,13 +19,12 @@ impl Vm {
     }
 
     pub fn interpret(&mut self, source: String) -> InterpretResult {
-        let mut chunk = Chunk::new();
         let mut compiler = compiler::Parser::new();
+        let mut codegen = CodeGen::new(compiler::FunctionType::Function);
+        let mut chunk = Chunk::new();
 
-        let function = match compiler.compile(source, &mut chunk) {
-            Some(x) => Arc::new(x),
-            None => return InterpretResult::CompileError,
-        };
+        let hir = compiler.compile(source).unwrap();
+        let function = Arc::new(codegen.codegen(hir, &mut chunk));
 
         self.stack.push(Value::Function(function.clone()));
 

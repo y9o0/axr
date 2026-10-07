@@ -1,24 +1,25 @@
 pub mod ast;
+pub mod codegen;
 pub mod core;
 pub mod emit;
 pub mod expr;
 pub mod locals;
-pub mod methode;
 pub mod prepass;
 pub mod rules;
+pub mod sema;
 pub mod stmt;
 pub mod type_safety;
 
-use crate::{
+pub use crate::{
     chunk::{Chunk, OpCode},
-    compiler::{ast::Stmt, locals::Local, rules::Precedence},
+    compiler::ast::{Expr, Stmt},
+    compiler::{locals::Local, rules::Precedence},
     scanner::{Scanner, Token, TokenType},
     value::{Function, Value},
 };
 
 pub const TYPETAG_ERR: &str = "TypeTag stack underflow — compiler emitted unbalanced typetags";
 
-pub use crate::compiler::ast::Expr::{self};
 pub use TypeTag::Void;
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc, sync::Arc};
 
@@ -28,24 +29,11 @@ pub struct Parser {
     pub(in crate::compiler) prevprev: Token,
     pub(in crate::compiler) had_err: bool,
     pub(in crate::compiler) painc_mode: bool,
-    pub(in crate::compiler) compiler: Compiler,
-    pub(in crate::compiler) compiler_stack: Vec<Compiler>,
     pub(in crate::compiler) const_table: HashMap<String, (Value, TypeTag)>,
     pub(in crate::compiler) type_tag: Vec<TypeTag>,
     pub(in crate::compiler) expected_type: Option<TypeTag>,
     pub(in crate::compiler) control_flow: ControlFlow,
-    pub(in crate::compiler) function_info: FunctionInfo,
     pub(in crate::compiler) info: Info,
-    pub(in crate::compiler) ast: Vec<Stmt>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Compiler {
-    pub(in crate::compiler) locals: Vec<Local>,
-    pub(in crate::compiler) local_count: i32,
-    pub(in crate::compiler) scope_depth: i32,
-    pub(in crate::compiler) function: Functions,
-    pub(in crate::compiler) has_returned: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -53,11 +41,6 @@ pub struct Functions {
     function: Function,
     #[allow(warnings)]
     function_type: FunctionType,
-}
-
-pub struct FunctionInfo {
-    parameters_type_tag_table: HashMap<String, Rc<RefCell<Vec<TypeTag>>>>,
-    return_type_tag_table: HashMap<String, TypeTag>,
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -70,6 +53,7 @@ pub struct ControlFlow {
     pub loop_starts: Vec<usize>,
     pub stops: Vec<Vec<u8>>,
     pub locals_in: Vec<i32>,
+    pub jumps: Vec<usize>,
 }
 
 pub struct Info {
@@ -98,31 +82,6 @@ pub enum TypeTag {
     Nai,
 }
 
-impl Compiler {
-    pub fn new(function_type: FunctionType) -> Self {
-        let local = vec![Local {
-            name: Token {
-                start: "".to_string(),
-                ..Default::default()
-            },
-            depth: 0,
-            is_mut: false,
-            type_tag: TypeTag::Void,
-        }];
-
-        Self {
-            locals: local,
-            local_count: 1,
-            scope_depth: 0,
-            function: Functions {
-                function: Function::new(),
-                function_type: function_type,
-            },
-            has_returned: false,
-        }
-    }
-}
-
 impl Parser {
     pub fn new() -> Self {
         Self {
@@ -131,8 +90,6 @@ impl Parser {
             prevprev: Token::default(),
             had_err: false,
             painc_mode: false,
-            compiler: Compiler::new(FunctionType::Script),
-            compiler_stack: Vec::new(),
             const_table: HashMap::new(),
             type_tag: Vec::new(),
             expected_type: None,
@@ -140,17 +97,13 @@ impl Parser {
                 loop_starts: Vec::new(),
                 stops: Vec::new(),
                 locals_in: Vec::new(),
+                jumps: Vec::new(),
             },
             info: Info {
                 is_mut: Vec::new(),
                 last_local_slot: Some(0),
                 names: Vec::new(),
             },
-            function_info: FunctionInfo {
-                parameters_type_tag_table: HashMap::new(),
-                return_type_tag_table: HashMap::new(),
-            },
-            ast: Vec::new(),
         }
     }
 }

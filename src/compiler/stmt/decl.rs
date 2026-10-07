@@ -1,4 +1,7 @@
-use crate::compiler::{ast::Stmt::NoneStmt, rules::Precedence::Assignment};
+use crate::compiler::{
+    ast::Stmt::{self, NoneStmt},
+    rules::Precedence::Assignment,
+};
 
 use super::*;
 
@@ -11,7 +14,7 @@ impl Parser {
         }
 
         stmt
-    } // done
+    }
 
     pub fn fn_declaration(&mut self, scanner: &mut Scanner) -> Stmt {
         self.consume(TokenType::Identifier, "Expect a functions name", scanner);
@@ -19,19 +22,11 @@ impl Parser {
 
         let expr = self.function(FunctionType::Function, scanner, &function_name.start);
 
-        Stmt::Fn {
-            value: Box::new(expr),
-            name: function_name,
-        }
-    } // done
+        Stmt::Fn { function: expr }
+    }
 
     pub fn variable_declaration(&mut self, scanner: &mut Scanner) -> Stmt {
-        if self.compiler.scope_depth == 0 {
-            self.error("Statements must be insaid a fn body");
-            return NoneStmt;
-        }
-
-        self.parse_variable("Expect variable name.", scanner);
+        let (is_mut, name) = self.parse_variable("Expect variable name.", scanner);
 
         let type_annotation = self.match_consume(&TokenType::Colon, scanner);
 
@@ -42,64 +37,6 @@ impl Parser {
             None
         };
 
-        let mut is_opt = false;
-
-        let (array, mut is_array) = if annotation_type.is_some_and(|t| t == TokenType::Array) {
-            self.parse_array_typetag(scanner)
-        } else {
-            (TypeTag::Array(Arc::new(TypeTag::Void)), false)
-        };
-
-        let opt = if annotation_type.is_some_and(|t| t == TokenType::Opt) {
-            self.consume(TokenType::LeftBracket, "Exp", scanner);
-
-            self.advance(scanner);
-
-            let opt = match self.previous.token_type {
-                TokenType::Int => TypeTag::Opt(Arc::new(TypeTag::Int)),
-                TokenType::Unt => TypeTag::Opt(Arc::new(TypeTag::Unt)),
-                TokenType::Float => TypeTag::Opt(Arc::new(TypeTag::Float)),
-                TokenType::Str => TypeTag::Opt(Arc::new(TypeTag::Str)),
-                TokenType::Char => TypeTag::Opt(Arc::new(TypeTag::Char)),
-                TokenType::Array => {
-                    is_array = true;
-                    TypeTag::Opt(Arc::new(self.parse_array_typetag(scanner).0))
-                }
-                _ => TypeTag::Opt(Arc::new(TypeTag::Void)),
-            };
-
-            self.consume(TokenType::RightBracket, "exp", scanner);
-            is_opt = true;
-            opt
-        } else {
-            TypeTag::Opt(Arc::new(Void))
-        };
-
-        let range = if annotation_type.is_some_and(|t| t == TokenType::Range) {
-            self.consume(TokenType::LeftBracket, "Expected '['", scanner);
-
-            self.advance(scanner);
-            let type_tag = self.previous.token_type;
-
-            self.consume(TokenType::RightBracket, "Expected ']'", scanner);
-
-            let range = match &type_tag {
-                TokenType::Int => TypeTag::Range(Arc::new(TypeTag::Int)),
-                TokenType::Unt => TypeTag::Range(Arc::new(TypeTag::Unt)),
-                TokenType::Float => TypeTag::Range(Arc::new(TypeTag::Float)),
-                _ => {
-                    return {
-                        self.error(&format!("Unexpected Range type '{:?}' ", &type_tag));
-                        Stmt::NoneStmt
-                    };
-                }
-            };
-
-            range
-        } else {
-            TypeTag::Range(Arc::new(Void))
-        };
-
         self.expected_type = annotation_type.map(|t| match t {
             TokenType::Int => TypeTag::Int,
             TokenType::Str => TypeTag::Str,
@@ -107,67 +44,11 @@ impl Parser {
             TokenType::Float => TypeTag::Float,
             TokenType::Char => TypeTag::Char,
             TokenType::Unt => TypeTag::Unt,
-            TokenType::Array => array.clone(),
-            TokenType::Opt => opt.clone(),
-            TokenType::Range => range.clone(),
             _ => TypeTag::Void,
         });
 
-        let value: Expr;
-
-        if self.match_consume(&TokenType::Equal, scanner) {
-            value = self.parse_precedence(Assignment, scanner);
-        } else {
-            value = Expr::Variable {
-                slot: OpCode::Void as u8,
-            };
-            self.type_tag.push(TypeTag::Void);
-        }
-
-        let type_tag = self.type_tag.pop().expect(TYPETAG_ERR);
-
-        self.compiler.locals[self.compiler.local_count as usize - 1].type_tag = type_tag.clone();
-
-        if let Some(token) = annotation_type {
-            match token {
-                TokenType::Opt => {
-                    if type_tag != TypeTag::Opt(Arc::new(TypeTag::None)) && type_tag != opt {
-                        self.error(&format!(
-                            "Mismatched types, expected [{}] found [{}]",
-                            opt, type_tag
-                        ));
-                    }
-                }
-                TokenType::Array => {
-                    let array = array;
-
-                    if let Some(ref x) = self.expected_type {
-                        if x != &type_tag {
-                            self.error(&format!(
-                                "Mismatched types, expected [{}] found [{}]",
-                                x, type_tag
-                            ));
-                        }
-                    } else {
-                        if type_tag != array {
-                            self.error(&format!(
-                                "Mismatched types, expected [{}] found [{}]",
-                                array, type_tag
-                            ));
-                        }
-                    }
-                }
-                TokenType::Range => {
-                    if type_tag != range {
-                        self.error(&format!(
-                            "Mismatched types, expected [{}] found [{}]",
-                            range, type_tag
-                        ));
-                    }
-                }
-                _ => self.type_check(&type_tag, &token, is_array, is_opt),
-            }
-        }
+        self.consume(TokenType::Equal, "Expect '=' after varible name", scanner);
+        let value: Expr = self.parse_precedence(Assignment, scanner);
 
         self.consume(
             TokenType::Semicolon,
@@ -175,12 +56,13 @@ impl Parser {
             scanner,
         );
 
-        self.define_variable();
-
         Stmt::Let {
+            name,
             value: Box::new(value),
+            annotation: annotation_type,
+            is_mut,
         }
-    } // done
+    }
 
     pub fn const_declaration(&mut self, scanner: &mut Scanner) -> Stmt {
         let const_name = self.parse_const("Expect const name.", scanner);
@@ -274,19 +156,12 @@ impl Parser {
             scanner,
         );
 
-        Stmt::Const {
-            name: const_name,
-            value: const_value,
-            type_tag,
-        }
-    } // done
-
-    pub fn declare_variable(&mut self) {
-        if self.compiler.scope_depth == 0 {
-            return;
-        }
-
-        let name = self.previous.clone();
-        self.add_local(name);
-    } // nothing to do
+        // Stmt::Const {
+        //     name: const_name,
+        //     value: const_value,
+        //     type_tag,
+        // }
+        //
+        Stmt::NoneStmt
+    }
 }

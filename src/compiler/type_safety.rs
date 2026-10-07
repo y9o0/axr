@@ -1,4 +1,17 @@
-use crate::value::OptWrapper;
+use crate::{
+    compiler::{
+        codegen::CodeGen,
+        sema::{
+            Sema,
+            errors::{
+                self,
+                SemaErr::{InvalidTarget, Unexpected},
+                SemaResult,
+            },
+        },
+    },
+    value::OptWrapper,
+};
 
 use super::*;
 
@@ -147,7 +160,9 @@ impl Parser {
         self.consume(TokenType::RightBracket, "Exp", scanner);
         array
     }
+}
 
+impl CodeGen {
     pub fn add_type_tag_to_chunk(&mut self, type_tag: TypeTag) -> u8 {
         // we cap the curent chunk so we can acc typetag
         let chunk = self.current_chunk();
@@ -164,5 +179,85 @@ impl Parser {
 
         // we return those idxs so we can emit them later!.
         // we need those idxs to index in the typetag stack and get the value we need.
+    }
+}
+
+pub fn parse_range_type(lt: TypeTag, rt: TypeTag) -> sema::errors::SemaResult<TypeTag> {
+    match (lt, rt) {
+        (TypeTag::Int, TypeTag::Int) => Ok(TypeTag::Range(Arc::new(TypeTag::Int))),
+        (TypeTag::Unt, TypeTag::Unt) => Ok(TypeTag::Range(Arc::new(TypeTag::Unt))),
+        (TypeTag::Float, TypeTag::Float) => Ok(TypeTag::Range(Arc::new(TypeTag::Float))),
+        _ => Err(sema::Sema::error("Unexpected range type !", Unexpected)),
+    }
+}
+
+pub fn parse_binary_type(
+    lt: TypeTag,
+    rt: TypeTag,
+    optype: TokenType,
+) -> sema::errors::SemaResult<TypeTag> {
+    let is_comp = matches!(
+        &optype,
+        TokenType::BangEqual
+            | TokenType::EqualEqual
+            | TokenType::Greater
+            | TokenType::GreaterEqual
+            | TokenType::Lesser
+            | TokenType::LesserEqual
+    );
+
+    match (&lt, &rt) {
+        (TypeTag::Int, TypeTag::Int)
+        | (TypeTag::Int, TypeTag::Float)
+        | (TypeTag::Float, TypeTag::Int)
+        | (TypeTag::Str, TypeTag::Str)
+        | (TypeTag::Unt, TypeTag::Unt)
+        | (TypeTag::Unt, TypeTag::Float)
+        | (TypeTag::Float, TypeTag::Unt)
+        | (TypeTag::Float, TypeTag::Float)
+        | (TypeTag::Bool, TypeTag::Bool)
+        | (TypeTag::Char, TypeTag::Char)
+            if is_comp =>
+        {
+            Ok(TypeTag::Bool)
+        }
+        (TypeTag::Int, TypeTag::Int) => Ok(TypeTag::Int),
+        (TypeTag::Int, TypeTag::Float) => Ok(TypeTag::Float),
+        (TypeTag::Float, TypeTag::Int) => Ok(TypeTag::Float),
+        (TypeTag::Str, TypeTag::Str) => Ok(TypeTag::Str),
+        (TypeTag::Unt, TypeTag::Unt) => Ok(TypeTag::Unt),
+        (TypeTag::Unt, TypeTag::Float) => Ok(TypeTag::Float),
+        (TypeTag::Float, TypeTag::Unt) => Ok(TypeTag::Unt),
+        (TypeTag::Float, TypeTag::Float) => Ok(TypeTag::Float),
+        _ => Err(sema::Sema::error(
+            &format!("mismatched types cannot use [{}] with [{}]", lt, rt),
+            sema::errors::SemaErr::TypeMismatch,
+        )),
+    }
+}
+
+pub fn parse_compoundassign_type(lt: TypeTag, rt: TypeTag) -> SemaResult<TypeTag> {
+    match (&lt, &rt) {
+        (TypeTag::Int, TypeTag::Int) => Ok(TypeTag::Int),
+        (TypeTag::Unt, TypeTag::Unt) => Ok(TypeTag::Unt),
+        (TypeTag::Float, &TypeTag::Float) => Ok(TypeTag::Float),
+        (TypeTag::Int | TypeTag::Unt | TypeTag::Float, _) => {
+            return Err(Sema::error(
+                &format!("Missmatched types expected [{}] found [{}]", lt, rt),
+                errors::SemaErr::TypeMismatch,
+            ));
+        }
+        (_, TypeTag::Int | TypeTag::Unt | TypeTag::Float) => {
+            return Err(Sema::error(
+                &format!("Missmatched types expected [{}] found [{}]", lt, rt),
+                errors::SemaErr::TypeMismatch,
+            ));
+        }
+        _ => {
+            return Err(Sema::error(
+                "modifers like += and -= can be used only on numbers",
+                InvalidTarget,
+            ));
+        }
     }
 }

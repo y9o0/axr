@@ -1,14 +1,16 @@
+use crate::compiler::sema::Sema;
+
 use super::*;
 
 #[derive(Debug, Clone)]
 pub struct Local {
     pub(in crate::compiler) name: Token,
     pub(in crate::compiler) depth: i32,
-    pub(in crate::compiler) is_mut: bool,
     pub(in crate::compiler) type_tag: TypeTag,
+    pub(in crate::compiler) is_mut: bool,
 }
 
-impl Parser {
+impl Sema {
     pub fn begin_scope(&mut self) {
         self.compiler.scope_depth += 1;
     }
@@ -20,7 +22,6 @@ impl Parser {
             && self.compiler.locals[self.compiler.local_count as usize - 1].depth
                 > self.compiler.scope_depth
         {
-            self.emit_byte(OpCode::Pop as u8);
             self.compiler.locals.pop();
             self.compiler.local_count -= 1;
         }
@@ -36,17 +37,18 @@ impl Parser {
         self.compiler.local_count += 1;
     }
 
-    pub fn resolve_local(&mut self, name: &Token) -> Option<(u8, bool, TypeTag)> {
+    pub fn resolve_local(&mut self, name: &Token) -> Option<(u8, TypeTag, bool)> {
         for i in (0..self.compiler.local_count).rev() {
             let local = &self.compiler.locals[i as usize];
-            let is_mut = local.is_mut;
             let type_tag = local.type_tag.clone();
+            let is_mut = local.is_mut;
 
             if Self::identifiers_equal(name, &local.name) {
                 if local.depth == -1 {
-                    self.error("Can't read local variable in its own initializer.");
+                    //self.error("Can't read local variable in its own initializer.");
+                    return None;
                 }
-                return Some((i as u8, is_mut, type_tag));
+                return Some((i as u8, type_tag, is_mut));
             }
         }
         None
@@ -67,5 +69,13 @@ impl Parser {
 
         self.compiler.locals[self.compiler.local_count as usize - 1].depth =
             self.compiler.scope_depth;
+    }
+
+    pub fn declare_variable(&mut self, name: Token) {
+        if self.compiler.scope_depth == 0 {
+            return;
+        }
+
+        self.add_local(name);
     }
 }

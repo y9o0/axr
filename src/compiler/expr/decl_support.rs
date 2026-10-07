@@ -1,28 +1,16 @@
 use super::*;
 
 impl Parser {
-    pub fn parse_variable(&mut self, error_message: &str, scanner: &mut Scanner) -> u8 {
+    pub fn parse_variable(&mut self, error_message: &str, scanner: &mut Scanner) -> (bool, Token) {
         let is_mut = self.match_consume(&TokenType::Tilde, scanner);
         self.consume(TokenType::Identifier, error_message, scanner);
-
-        self.declare_variable();
-        if self.compiler.scope_depth > 0 {
-            let idx = self.compiler.local_count as usize - 1;
-            self.compiler.locals[idx].is_mut = is_mut;
-            return 0;
-        }
-
-        let token = self.previous.clone();
-        self.identifier_constant(&token)
+        let name = self.previous.clone();
+        (is_mut, name)
     }
 
     pub fn parse_const(&mut self, error_message: &str, scanner: &mut Scanner) -> String {
         self.consume(TokenType::Identifier, error_message, scanner);
         self.previous.start.clone()
-    }
-
-    pub fn define_variable(&mut self) {
-        self.mark_initialized();
     }
 
     pub fn casting(&mut self, lhs: &Expr, scanner: &mut Scanner) -> Expr {
@@ -54,13 +42,11 @@ impl Parser {
             _ => {}
         }
 
-        let idx = self.add_type_tag_to_chunk(target.clone());
-
-        self.type_tag.push(target);
+        self.type_tag.push(target.clone());
 
         Expr::Cast {
             left: Box::new(lhs.to_owned()),
-            right: idx,
+            target,
         }
     }
 }

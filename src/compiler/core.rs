@@ -1,31 +1,25 @@
+use crate::compiler::sema::{HirStmt, Sema};
+
 use super::*;
 
 impl Parser {
-    pub fn compile(&mut self, source: String, chunk: &mut Chunk) -> Option<Function> {
+    pub fn compile(&mut self, source: String) -> Option<Vec<HirStmt>> {
         let mut scanner = Scanner::new(&source);
+        let mut sema_pass = Sema::new();
 
-        self.pre_pass(&source);
-        self.check_main();
-
-        self.compiler.function.function.chunk = chunk.clone();
         self.had_err = false;
         self.painc_mode = false;
 
         self.advance(&mut scanner);
 
+        let mut hir_stmts: Vec<HirStmt> = Vec::new();
         while !self.match_consume(&TokenType::Eof, &mut scanner) {
             let stmt = self.declaration(&mut scanner);
-            self.ast.push(stmt);
+            let hir_stmt = sema_pass.stmt_to_hir(stmt).unwrap();
+            hir_stmts.push(hir_stmt);
         }
 
-        for i in self.ast.clone() {
-            self.stmt_gen(&i);
-        }
-
-        let function = self.end_compiler();
-        *chunk = self.current_chunk().clone();
-
-        if self.had_err { None } else { Some(function) }
+        if !self.had_err { Some(hir_stmts) } else { None }
     }
 
     pub fn advance(&mut self, scanner: &mut Scanner) {

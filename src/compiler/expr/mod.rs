@@ -6,7 +6,6 @@ mod r#const;
 mod decl_support;
 mod function;
 mod operators;
-mod opt;
 mod primary;
 
 impl Parser {

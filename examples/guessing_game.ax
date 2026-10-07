@@ -1,19 +1,26 @@
 fn main() {
     println("Guess the number!");
 
-    let secret_number : unt = random_from::[unt]((1 to unt)..(100 to unt));
-
+    let secret_number : int = random_from::[int](1..100);
     loop {
-        let guess : unt = input::[unt]("Please input your guess: ");
+        let guess : int = input::[int]("Please input your guess: ");
 
         print("You guessed: ");
         println(guess);
 
 
+        let num = test();
+        println(num);
+
+        println(secret_number);
+        println(guess);
+
         if guess < secret_number {
             println("Too small!");
+            skip;
         } else if guess > secret_number {
             println("Too big!");
+            skip;
         } else {
             println("You win!");
             stop;
@@ -21,4 +28,8 @@ fn main() {
     }
 
     return;
+}
+
+fn test() -> int {
+   return 1;
 }

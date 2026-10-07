@@ -1,9 +1,7 @@
-use crate::compiler::{ast::Stmt::NoneStmt, rules::Precedence::Assignment};
-
 use super::super::*;
 
 impl Parser {
-    pub fn stop_stmt(&mut self, scanner: &mut Scanner) {
+    pub fn stop_stmt(&mut self, scanner: &mut Scanner) -> Stmt {
         if self.control_flow.stops.is_empty() {
             self.error("'stop' used outside of a loop.");
         }
@@ -14,19 +12,10 @@ impl Parser {
             scanner,
         );
 
-        let exit_jump = self.emit_jump(Jump as usize);
-        let count = *self.control_flow.locals_in.last().unwrap();
-
-        for _ in count..self.compiler.local_count {
-            self.emit_byte(OpCode::Pop as u8);
-        }
-
-        if let Some(jumps) = self.control_flow.stops.last_mut() {
-            jumps.push(exit_jump as u8);
-        }
+        Stmt::Stop
     }
 
-    pub fn skip_stmt(&mut self, scanner: &mut Scanner) {
+    pub fn skip_stmt(&mut self, scanner: &mut Scanner) -> Stmt {
         if self.control_flow.loop_starts.is_empty() {
             self.error("'skip' used outside of a loop.");
         }
@@ -37,67 +26,61 @@ impl Parser {
             scanner,
         );
 
-        let loop_start = *self.control_flow.loop_starts.last().unwrap();
-        let count = *self.control_flow.locals_in.last().unwrap();
-
-        for _ in count..self.compiler.local_count {
-            self.emit_byte(OpCode::Pop as u8);
-        }
-
-        self.emit_loop(loop_start);
+        Stmt::Skip
     }
 
-    pub fn return_stmt(&mut self, scanner: &mut Scanner) -> Stmt {
-        let function_name = &self.compiler.function.function.name;
-        let stmt: Stmt;
-
-        let expected_return_type = match self
-            .function_info
-            .return_type_tag_table
-            .get(function_name)
-            .cloned()
-        {
-            Some(x) => x,
-            None => {
-                return {
-                    self.error("Function name was not found in the table!.");
-                    NoneStmt
-                };
-            }
-        };
-
-        if self.match_consume(&TokenType::Semicolon, scanner) {
-            if expected_return_type != TypeTag::Void {
-                self.error(&format!(
-                    "Expected [{}] found [{}]",
-                    expected_return_type,
-                    TypeTag::Void
-                ));
-            }
-
-            stmt = Stmt::Return(None);
-        } else {
-            let value = self.parse_precedence(Assignment, scanner);
-
-            let type_tag = self.type_tag.pop().expect(TYPETAG_ERR);
-
-            if expected_return_type != type_tag {
-                self.error(&format!(
-                    "Expected [{}] found [{}]!. ",
-                    expected_return_type, type_tag
-                ));
-            }
-
-            self.consume(
-                TokenType::Semicolon,
-                "Expect ';' at the end of the return statement",
-                scanner,
-            );
-
-            stmt = Stmt::Return(Some(Box::new(value)))
-        }
-
-        self.compiler.has_returned = true;
-        stmt
-    } // done
+    //     pub fn return_stmt(&mut self, scanner: &mut Scanner) -> Stmt {
+    //         // let function_name = &self.compiler.function.function.name;
+    //         let stmt: Stmt;
+    //
+    //         // let expected_return_type = match self
+    //         //     .function_info
+    //         //     .return_type_tag_table
+    //         //     .get(function_name)
+    //         //     .cloned()
+    //         // {
+    //         //     Some(x) => x,
+    //         //     None => {
+    //         //         return {
+    //         //             self.error("Function name was not found in the table!.");
+    //         //             NoneStmt
+    //         //         };
+    //         //     }
+    //         // };
+    //
+    //         // if self.match_consume(&TokenType::Semicolon, scanner) {
+    //         //     if expected_return_type != TypeTag::Void {
+    //         //         self.error(&format!(
+    //         //             "Expected [{}] found [{}]",
+    //         //             expected_return_type,
+    //         //             TypeTag::Void
+    //         //         ));
+    //         //     }
+    //
+    // //             stmt = Stmt::Return(None);
+    // //         } else {
+    // //             let value = self.parse_precedence(Assignment, scanner);
+    // //
+    // //             let type_tag = self.type_tag.pop().expect(TYPETAG_ERR);
+    // //
+    // //             if expected_return_type != type_tag {
+    // //                 self.error(&format!(
+    // //                     "Expected [{}] found [{}]!. ",
+    // //                     expected_return_type, type_tag
+    // //                 ));
+    // //             }
+    //
+    //             self.consume(
+    //                 TokenType::Semicolon,
+    //                 "Expect ';' at the end of the return statement",
+    //                 scanner,
+    //             );
+    //
+    //             // stmt = Stmt::Return(Some(Box::new(value)))
+    //         }
+    //
+    //         //self.compiler.has_returned = true;
+    //
+    //         Stmt::NoneStmt
+    //     }
 }
